@@ -1,4 +1,4 @@
-import os, shutil, hashlib, sqlite3, subprocess, zlib
+import os, shutil, hashlib, sqlite3, subprocess, zlib, struct
 
 
 USER_NAME = 'turut'
@@ -8,30 +8,37 @@ ASSET_DIR = 'b'
 OUT_DIR = 'out'
 TEMP_DIR = 'temp'
 
-ACBEDITOR_PATH = 'vendor/SonicAudioTools/ACBEditor.exe'
+HCA_KEY = 3201512 # 000000000030D9E8
+
 VGMSTREAM_PATH = 'vendor/vgmstream/test.exe'
 
 CURRENT_DIR = os.path.dirname(os.path.realpath(__file__))
-
 
 def create_or_clean_dir(dirname):
     if os.path.exists(dirname):
         shutil.rmtree(dirname)
     os.makedirs(dirname)
 
-def crc32(filename):
-    BUFFER_SIZE = 4096
-    with open(filename, 'rb') as f:
-        crc = zlib.crc32('')
-        while True:
-            data = f.read(BUFFER_SIZE)
-            if not data:
-                break
-            crc = zlib.crc32(data, crc)
-    return crc
+def make_keyfile(awb_path = ''):
+    subkey = 0
+    key_path = os.path.join(TEMP_DIR, '.hcakey')
 
+    if awb_path:
+        f = open(awb_path, 'rb')
+        f.seek(14)
+        subkey = struct.unpack('<h', f.read(2))[0]
+        f.close()
 
-print ("Reading database...")
+        key_path = awb_path + '.hcakey'
+
+    subkey = 0
+    key = struct.pack('>qh', HCA_KEY, subkey)
+
+    f = open(key_path, 'wb')
+    f.write(key)
+    f.close()
+
+print ("-- Reading database...")
 db = sqlite3.connect(os.path.join(DATA_DIR, MANIFEST_FILENAME))
 cursor = db.cursor()
 pattern = ASSET_DIR + '/'
@@ -42,37 +49,56 @@ db.close()
 create_or_clean_dir(TEMP_DIR)
 create_or_clean_dir(OUT_DIR)
 
-print ("Copying {0} files...".format(len(files)))
+print ("-- Copying {0} files...".format(len(files)))
 hashes = [hashlib.sha1(f.encode('utf-8')).hexdigest() for f in files]
 for hash, file in zip(hashes, files):
     src = os.path.join(DATA_DIR, ASSET_DIR, hash)
     dst = os.path.join(TEMP_DIR, file)
     shutil.copy(src, dst)
 
-acb_files = [f for f in files if f.endswith('.acb')]
-for f in acb_files:
-    name = f[:-4]
-    print('Processing {0}...'.format(name))
-    filename = os.path.join(TEMP_DIR, f)
-    subprocess.call([ACBEDITOR_PATH, filename])
-    os.remove(filename)
-    os.remove(os.path.join(TEMP_DIR, name + '.awb'))
-    
-    hca_path = os.path.join(TEMP_DIR, name)
-    crc_map = {}
-    for root, dirs, files in os.walk(hca_path):
-        for f in files:
-            crc = crc32(os.path.join(CURRENT_DIR, hca_path, f))
-            if crc in crc_map:
-                print('{0} is a duplicate of {1}.'.format(f, crc_map[crc]))
-            else:
-                crc_map[crc] = f
-        
-    for i, f in enumerate(crc_map.values(), start=1):
-        name_format = r'{0}-{1:0>2d}.wav' if len(crc_map) > 1 else r'{0}.wav'
-        wav_filename = name_format.format(name, i)
-        subprocess.call([VGMSTREAM_PATH, '-o', os.path.join(CURRENT_DIR, OUT_DIR, wav_filename), os.path.join(hca_path, f)])
+#make_keyfile()
 
-    shutil.rmtree(hca_path)
+awb_files = [f for f in files if f.endswith('.awb')]
+awb_index = 0
+processed = {}
+
+for awb in awb_files:
+    awb_index += 1 
+    print('-- Processing {0} ({1} of {2})...\n'.format(awb, awb_index, len(awb_files)))
+
+    awb_path = os.path.join(TEMP_DIR, awb)
+    make_keyfile(awb_path)    
+
+    metadata = subprocess.check_output([VGMSTREAM_PATH, '-m', awb_path])
+    print(metadata)
+    print('')
+    lines = [line.split(' ') for line in metadata.split(os.linesep)]
+
+    count = 1    
+    if lines[-4][1] == 'count:':
+        count = int(lines[-4][2])
+
+    for i in range(1, count + 1):
+        stream_metadata = subprocess.check_output([VGMSTREAM_PATH, '-s', str(i), '-m', awb_path])
+        stream_lines = [line.split(' ') for line in metadata.split(os.linesep)]
+        names = ' '.join(stream_lines[-2][2:]).split('; ')
+        print('Stream {0} names: {1}'.format(i, names))
+        print('')
+
+        name = names[0]
+
+        if (name in processed):
+            processed[name] +=1
+            out_name = '{0}-{1}.wav'.format(name, processed[name])
+        else:
+            processed[name] = 1
+            out_name = name + '.wav'
+
+        subprocess.call([VGMSTREAM_PATH, '-s', str(i), '-o', os.path.join(CURRENT_DIR, OUT_DIR, out_name), awb_path])
+
+    awb_root = awb_path[:-4]
+    os.remove(awb_root + '.awb')
+    os.remove(awb_root + '.acb')
+    os.remove(awb_root + '.awb.hcakey')
 
 print('Done.')
