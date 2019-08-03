@@ -12,6 +12,8 @@ HCA_KEY = 3201512 # 000000000030D9E8
 IS_BATCH = False # Can be True when vgmstream .hcakey works for new keys.
 SKIP_SUBKEY = True # Leave it to vgmstream.
 
+DEFAULT_LOOPS = 2
+
 VGMSTREAM_PATH = 'vendor/vgmstream/test.exe'
 
 CURRENT_DIR = os.path.dirname(os.path.realpath(__file__))
@@ -58,7 +60,13 @@ def decompress_awb(awb_path, index = 1):
         processed[name] = 1
         out_name = name + '.wav'
 
-    subprocess.call([VGMSTREAM_PATH, '-s', str(index), '-o', os.path.join(CURRENT_DIR, OUT_DIR, out_name), awb_path])
+
+    loop_arg = '-F'
+    loops = DEFAULT_LOOPS
+    if loops > 0:
+        loop_arg = '-l {0}'.format(loops)
+
+    subprocess.call([VGMSTREAM_PATH, loop_arg, '-s', str(index), '-o', os.path.join(CURRENT_DIR, OUT_DIR, out_name), awb_path])
 
 
 print ("-- Reading database...")
@@ -66,7 +74,7 @@ db = sqlite3.connect(os.path.join(DATA_DIR, MANIFEST_FILENAME))
 cursor = db.cursor()
 pattern = ASSET_DIR + '/'
 cursor.execute('SELECT k FROM t WHERE k LIKE "{0}%"'.format(pattern))
-files = [r[0].replace(pattern, '') for r in cursor.fetchall()]
+files = [r[0][len(pattern):] for r in cursor.fetchall()]
 db.close()
 
 
