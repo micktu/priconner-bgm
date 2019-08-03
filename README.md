@@ -14,4 +14,4 @@ Run `python purikone.py`.
 ### Victory!
 Is the extracted audio doesn't play, it means that you got the bad ending.
 
-Actually, it means that encryption has changed. Consult good folk from `vgmstream` repository.
+Actually, it means that encryption has changed. Consult with the good folk from `vgmstream` repository.
