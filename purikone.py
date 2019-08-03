@@ -51,9 +51,9 @@ def make_keyfile(awb_path = ''):
 def fetch_db_files(db_path):
     db = sqlite3.connect(db_path)
     cursor = db.cursor()
-    pattern = ASSET_DIR + '/'
-    cursor.execute('SELECT k FROM t WHERE k LIKE "{0}%"'.format(pattern))
-    files = [r[0][len(pattern):] for r in cursor.fetchall()]
+    subpath = ASSET_DIR + '/'
+    cursor.execute('SELECT k FROM t WHERE k LIKE "{0}%"'.format(subpath))
+    files = [r[0][len(subpath):] for r in cursor.fetchall()]
     db.close()
     
     return files
@@ -75,9 +75,11 @@ def process_awb(awb):
     metadata = subprocess.check_output([VGMSTREAM_PATH, '-m', awb_path])
     lines = [line.split(' ') for line in metadata.split(os.linesep)]
 
-    stream_count = 1    
-    if lines[-4][1] == 'count:':
-        stream_count = int(lines[-4][2])
+    stream_count = 1
+    for line in lines:
+        if len(line) > 2 and line[0].startswith('stream') and line[1].startswith('count'):
+            stream_count = int(line[2])
+            break
 
     out_path = os.path.join(CURRENT_DIR, OUT_DIR)
     for i in range(1, stream_count + 1):
@@ -94,7 +96,12 @@ def process_awb(awb):
 def decompress_awb(awb_path, out_dir, index = 1):
     metadata = subprocess.check_output([VGMSTREAM_PATH, '-s', str(index), '-m', awb_path])
     lines = [line.split(' ') for line in metadata.split(os.linesep)]
-    names = ' '.join(lines[-2][2:]).split('; ')
+
+    names = []
+    for line in lines:
+        if len(line) > 2 and line[0].startswith('stream') and line[1].startswith('name'):
+            names = ' '.join(line[2:]).split('; ')
+            break
     
     name = names[0]
     if (name in processed):
