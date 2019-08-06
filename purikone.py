@@ -13,26 +13,24 @@ SHOULD_CLEAN = True
 
 VGMSTREAM_PATH = 'vendor/vgmstream/test.exe'
 HCA_KEY = 0x30D9E8
-IS_BATCH = False # Can be True when vgmstream .hcakey works for new keys.
-SKIP_SUBKEY = True # Leave it to vgmstream.
+IS_BATCH = True # Use a single keyfile. Otherwise, use per-file keyfiles. vgmstream will derive the subkey.
+SKIP_SUBKEY = True # When IS_BATCH is False, vgmstream will read the subkey. Otherwise, we do.
 DEFAULT_LOOPS = 2
 
 
 def create_or_clean_dir(dirname):
     if os.path.exists(dirname):
-        shutil.rmtree(dirname, ignore_errors=True)
-
-    while os.path.exists(dirname):
-        pass
-    
-    os.makedirs(dirname)
+        for f in os.listdir(dirname):
+            os.remove(os.path.join(dirname, f))
+    else:
+        os.makedirs(dirname)
 
 
 def make_keyfile(awb_path = ''):
     subkey = 0
     key_path = os.path.join(TEMP_DIR, '.hcakey')
 
-    if awb_path:
+    if awb_path and not IS_BATCH:
         key_path = awb_path + '.hcakey'
 
         if not SKIP_SUBKEY:
@@ -41,7 +39,10 @@ def make_keyfile(awb_path = ''):
             subkey = struct.unpack('<h', f.read(2))[0]
             f.close()
 
-    key = struct.pack('>qh', HCA_KEY, subkey)
+    if IS_BATCH or SKIP_SUBKEY:
+        key = struct.pack('>q', HCA_KEY)
+    else:    
+        key = struct.pack('>qh', HCA_KEY, subkey)
 
     f = open(key_path, 'wb')
     f.write(key)
@@ -69,6 +70,7 @@ def copy_db_files(files, src_dir, dst_dir):
 
 def process_awb(awb):
     awb_path = os.path.join(TEMP_DIR, awb)
+
     if not IS_BATCH:
         make_keyfile(awb_path)    
 
@@ -103,13 +105,7 @@ def decompress_awb(awb_path, out_dir, index = 1):
             names = ' '.join(line[2:]).split('; ')
             break
     
-    name = names[0]
-    if (name in processed):
-        processed[name] +=1
-        out_name = '{0}-{1}.wav'.format(name, processed[name])
-    else:
-        processed[name] = 1
-        out_name = name + '.wav'
+    out_name = names[0] + '.wav'
 
     loop_arg = '-F'
     loops = DEFAULT_LOOPS
@@ -137,7 +133,6 @@ if __name__ == "__main__":
 
     create_or_clean_dir(OUT_DIR)
     
-    processed = {}
     awb_files = [f for f in files if f.endswith('.awb')]
 
     for awb_index, awb in enumerate(awb_files, start=1):
