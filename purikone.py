@@ -68,14 +68,18 @@ def copy_db_files(files, src_dir, dst_dir):
         shutil.copy(src, dst)
 
 
+def execute_get_words(*args):
+    output = subprocess.check_output(args)
+    return [line.split(' ') for line in output.split(os.linesep)]
+
+
 def process_awb(awb):
     awb_path = os.path.join(TEMP_DIR, awb)
 
     if not IS_BATCH:
         make_keyfile(awb_path)    
 
-    metadata = subprocess.check_output([VGMSTREAM_PATH, '-m', awb_path])
-    lines = [line.split(' ') for line in metadata.split(os.linesep)]
+    lines = execute_get_words(VGMSTREAM_PATH, '-m', awb_path)
 
     stream_count = 1
     for line in lines:
@@ -96,8 +100,7 @@ def process_awb(awb):
 
 
 def decompress_awb(awb_path, out_dir, index = 1):
-    metadata = subprocess.check_output([VGMSTREAM_PATH, '-s', str(index), '-m', awb_path])
-    lines = [line.split(' ') for line in metadata.split(os.linesep)]
+    lines = execute_get_words(VGMSTREAM_PATH, '-s', str(index), '-m', awb_path)
 
     names = []
     for line in lines:
